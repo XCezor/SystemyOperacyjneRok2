@@ -9,6 +9,6 @@ def main(*args):
         print(f"File content:\n{content}")
 
 if len(sys.argv) != 3:
-    print("Usage: /rr [\"name\", length, start], length2")
+    print("Usage: /rr 'file.csv', length2")
 else:
     main(sys.argv[1], sys.argv[2])

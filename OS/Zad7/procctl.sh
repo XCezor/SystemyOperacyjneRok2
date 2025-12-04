@@ -35,13 +35,13 @@ getProcessPIDByName() {
 }
 
 killProcessPID() {
-    read -p "PID to kill: " pid
+    read -p "PID: " pid
     kill $pid && echo "Process with PID $pid killed." || echo "Failed to kill process with PID $pid."
 }
 
 killProcessName() {
-    read -p "Process name to kill: " pname
-    pkill $pname && echo "Processes with name '$pname' killed." || echo "Failed to kill processes with name '$pname'."
+    read -p "Process name: " pname
+    pkill $pname && echo "Process with name '$pname' killed." || echo "Failed to kill process with name '$pname'."
 }
 
 echo "Process Control:"
