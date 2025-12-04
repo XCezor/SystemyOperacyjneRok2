@@ -90,7 +90,8 @@ if [[ $# -lt 1 ]]; then
     show_all
 else
     for arg in "$@"; do
-        case $arg in
+        argument=`echo "$arg" | sed -e 's/^./\U&/'`;
+        case $argument in
             Cpu)
                 show_cpu
                 ;;
