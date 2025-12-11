@@ -12,14 +12,6 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 compressors=(gzip bzip2 xz zstd lz4 7z)
 
-print_table_header() {
-    printf "name\tcompress\tdecompress\tratio\n"
-}
-
-missing_tool() {
-    printf "%s\tskipped\tskipped\tskipped (not installed)\n" "$1"
-}
-
 for dir in "$@"; do
     if [[ ! -d "$dir" ]]; then
         echo "Skipping '$dir' (not a directory)." >&2
@@ -32,7 +24,7 @@ for dir in "$@"; do
     original_size=$(stat -c%s "$archive")
 
     echo "$dir"
-    print_table_header
+    printf "name\tcompress\tdecompress\tratio\n"
 
     for compressor in "${compressors[@]}"; do
         compressed_file="$tmp_dir/archive.tar"
@@ -74,7 +66,7 @@ for dir in "$@"; do
         esac
 
         if ! command -v "$compressor" >/dev/null 2>&1; then
-            missing_tool "$compressor"
+            printf "%s\tskipped\tskipped\tskipped (not installed)\n" "$compressor"
             continue
         fi
 
@@ -90,11 +82,7 @@ for dir in "$@"; do
         compressed_size=$(stat -c%s "$compressed_file")
 
         start=$(date +%s.%N)
-        if [[ "$compressor" == "7z" ]]; then
-            "${decompress_cmd[@]}" >/dev/null
-        else
-            "${decompress_cmd[@]}" >/dev/null
-        fi
+        "${decompress_cmd[@]}" >/dev/null
         end=$(date +%s.%N)
         decompress_time=$(echo "$end - $start" | bc -l)
 
