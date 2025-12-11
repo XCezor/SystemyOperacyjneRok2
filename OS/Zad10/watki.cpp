@@ -3,7 +3,16 @@
 #include <sstream>
 #include <thread>
 #include <string>
+#include <mutex>
 using namespace std;
+
+#define LETTER_COUNT 26
+struct context {
+    string content;
+    unsigned long count[LETTER_COUNT] = {0};
+    double sumOfSquares = 0;
+    mutex mutex;
+};
 
 void loop(int n) {
     cout << "Watek numer " << n << endl;
