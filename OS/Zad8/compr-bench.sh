@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export LC_NUMERIC=C
+
 set -uo pipefail
 
 if [[ $# -lt 1 ]]; then
