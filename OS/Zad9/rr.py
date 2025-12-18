@@ -34,7 +34,7 @@ class RoundRobinScheduler:
             print(f"T={self.time}: New process {p.name} is waiting for execution (length={p.length})")
 
     def run(self):
-        """Wykonuje symulację algorytmu Round Robin."""
+        """Symulacja algorytmu Round Robin."""
         while self.waiting or self.ready:
             self._move_arrived_processes()
 
