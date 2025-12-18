@@ -56,8 +56,7 @@ class RoundRobinScheduler:
             p.remaining -= run_time
             self.time += run_time
             
-            # Sprawdź, czy proces się zakończył
-            if p.remaining == 0:
+            if p.remaining <= 0:
                 print(f"T={self.time}: Process {p.name} has been finished")
             else:
                 # Sprawdź nowe procesy, które pojawiły się podczas wykonania
