@@ -16,7 +16,7 @@ class RoundRobinScheduler:
         self.waiting = self._load_processes(csv_path)  # Kolejka procesów oczekujących
         self.ready = []  # Kolejka procesów gotowych do wykonania
         self.time = 0
-    
+
     def _load_processes(self, csv_path):
         """Wczytuje procesy z pliku CSV."""
         processes = []
@@ -25,19 +25,19 @@ class RoundRobinScheduler:
                 name, length, start = line.strip().split(',')
                 processes.append(Process(name, int(length), int(start)))
         return processes
-    
+
     def _move_arrived_processes(self):
         """Przenosi procesy z kolejki oczekującej do kolejki gotowych."""
         while self.waiting and self.waiting[0].start <= self.time:
             p = self.waiting.pop(0)
             self.ready.append(p)
             print(f"T={self.time}: New process {p.name} is waiting for execution (length={p.length})")
-    
+
     def run(self):
         """Wykonuje symulację algorytmu Round Robin."""
         while self.waiting or self.ready:
             self._move_arrived_processes()
-            
+
             if not self.ready:
                 if self.waiting:
                     print(f"T={self.time}: No processes currently available")
@@ -45,30 +45,30 @@ class RoundRobinScheduler:
                     continue
                 else:
                     break
-            
+
             # Pobierz proces z kolejki gotowych
             p = self.ready.pop(0)
             run_time = min(self.quantum, p.remaining)
-            
+
             print(f"T={self.time}: {p.name} will be running for {run_time} time units. Time left: {p.remaining - run_time}")
-            
+
             # Wykonaj proces
             p.remaining -= run_time
             self.time += run_time
-            
+
             if p.remaining <= 0:
                 print(f"T={self.time}: Process {p.name} has been finished")
             else:
                 # Sprawdź nowe procesy, które pojawiły się podczas wykonania
                 self._move_arrived_processes()
                 self.ready.append(p)
-        
+
         print(f"T={self.time}: No more processes in queues")
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python rr.py <csv_file> <quantum>")
         sys.exit(1)
-    
+
     scheduler = RoundRobinScheduler(sys.argv[1], int(sys.argv[2]))
     scheduler.run()
