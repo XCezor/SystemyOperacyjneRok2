@@ -66,7 +66,6 @@ class RoundRobinScheduler:
         
         print(f"T={self.time}: No more processes in queues")
 
-
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python rr.py <csv_file> <quantum>")
