@@ -3,8 +3,6 @@ import sys
 
 
 class Process:
-    """Klasa reprezentująca proces w systemie operacyjnym."""
-    
     def __init__(self, name, length, start):
         self.name = name
         self.length = length  # Całkowity czas wykonania
@@ -13,8 +11,6 @@ class Process:
 
 
 class RoundRobinScheduler:
-    """Symulator planisty Round Robin."""
-    
     def __init__(self, csv_path, quantum):
         self.quantum = quantum
         self.waiting = self._load_processes(csv_path)  # Kolejka procesów oczekujących
@@ -40,10 +36,8 @@ class RoundRobinScheduler:
     def run(self):
         """Wykonuje symulację algorytmu Round Robin."""
         while self.waiting or self.ready:
-            # Przenieś procesy, które już się pojawiły
             self._move_arrived_processes()
             
-            # Jeśli brak procesów gotowych do wykonania
             if not self.ready:
                 if self.waiting:
                     print(f"T={self.time}: No processes currently available")
@@ -62,13 +56,12 @@ class RoundRobinScheduler:
             p.remaining -= run_time
             self.time += run_time
             
-            # Sprawdź czy proces się zakończył
+            # Sprawdź, czy proces się zakończył
             if p.remaining == 0:
                 print(f"T={self.time}: Process {p.name} has been finished")
             else:
                 # Sprawdź nowe procesy, które pojawiły się podczas wykonania
                 self._move_arrived_processes()
-                # Wywłaszcz proces i dodaj na koniec kolejki
                 self.ready.append(p)
         
         print(f"T={self.time}: No more processes in queues")
