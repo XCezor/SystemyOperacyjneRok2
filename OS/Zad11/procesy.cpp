@@ -1,4 +1,3 @@
-// Concise process-based implementation: mmap file, anonymous shared mmap for SharedData, fork, merge under pthread mutex
 #include <iostream>
 #include <cmath>
 #include <cstring>
