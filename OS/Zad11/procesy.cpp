@@ -5,6 +5,7 @@
 #include <vector>
 #include <mutex>
 #include <cmath>
+#include <cstring>
 
 struct SharedData {
     unsigned int counts[26];
