@@ -1,69 +1,185 @@
+// Procesowa wersja: mmap pliku, anonimowe mmap dla współdzielonej struktury
 #include <iostream>
-#include <thread>
 #include <string>
-#include <fstream>
 #include <vector>
-#include <mutex>
 #include <cmath>
 #include <cstring>
+#include <cerrno>
+#include <cstdlib>
+
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <pthread.h>
+
+#define LETTER_COUNT 26
 
 struct SharedData {
-    unsigned int counts[26];
+    unsigned int counts[LETTER_COUNT];
     double sum_sqrt_ascii;
-    std::mutex mutex;
+    pthread_mutex_t mutex;
 };
 
 int main(int argc, char const *argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: <path_to_ascii_file>" << " Optional: <number_of_processes>" << std::endl;
-        exit(1);
-    }
-    int num_processes = (argc > 2) ? std::stoi(argv[2]) : std::thread::hardware_concurrency();
-
-    std::ifstream file(argv[1]);
-    if (!file.is_open()) {
-        std::cerr << "Error opening file" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <path_to_ascii_file> [num_processes]" << std::endl;
         return 1;
     }
-    std::string file_content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    file.close();
 
-    // Alokacja pamięci współdzielonej
-    SharedData *shared_data = new SharedData();
-    memset(shared_data->counts, 0, sizeof(shared_data->counts));
-    shared_data->sum_sqrt_ascii = 0.0;
+    int num_processes = 0;
+    if (argc > 2) {
+        num_processes = std::stoi(argv[2]);
+        if (num_processes <= 0) num_processes = 1;
+    } else {
+        long procs = sysconf(_SC_NPROCESSORS_ONLN);
+        num_processes = (procs > 0) ? static_cast<int>(procs) : 1;
+    }
 
-    // Przetwarzanie zawartości pliku w wielu wątkach
-    std::vector<std::thread> threads;
-    size_t chunk_size = file_content.size() / num_processes;
+    const char* path = argv[1];
+    int fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        std::cerr << "Error opening file '" << path << "': " << strerror(errno) << std::endl;
+        return 1;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) == -1) {
+        std::cerr << "fstat failed: " << strerror(errno) << std::endl;
+        close(fd);
+        return 1;
+    }
+
+    off_t file_size = st.st_size;
+    if (file_size == 0) {
+        std::cout << "File is empty." << std::endl;
+        close(fd);
+        return 0;
+    }
+
+    void* file_map = mmap(nullptr, static_cast<size_t>(file_size), PROT_READ, MAP_SHARED, fd, 0);
+    if (file_map == MAP_FAILED) {
+        std::cerr << "mmap file failed: " << strerror(errno) << std::endl;
+        close(fd);
+        return 1;
+    }
+
+    // Przydzielenie anonimowej współdzielonej pamięci dla SharedData
+    void* shm = mmap(nullptr, sizeof(SharedData), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if (shm == MAP_FAILED) {
+        std::cerr << "mmap shared memory failed: " << strerror(errno) << std::endl;
+        munmap(file_map, static_cast<size_t>(file_size));
+        close(fd);
+        return 1;
+    }
+
+    SharedData* shared = static_cast<SharedData*>(shm);
+    // Inicjalizacja danych współdzielonych
+    memset(shared->counts, 0, sizeof(shared->counts));
+    shared->sum_sqrt_ascii = 0.0;
+
+    // Inicjalizacja mutexu współdzielonego między procesami
+    pthread_mutexattr_t mattr;
+    if (pthread_mutexattr_init(&mattr) != 0) {
+        std::cerr << "pthread_mutexattr_init failed" << std::endl;
+        munmap(shm, sizeof(SharedData));
+        munmap(file_map, static_cast<size_t>(file_size));
+        close(fd);
+        return 1;
+    }
+    if (pthread_mutexattr_setpshared(&mattr, PTHREAD_PROCESS_SHARED) != 0) {
+        std::cerr << "pthread_mutexattr_setpshared failed" << std::endl;
+        pthread_mutexattr_destroy(&mattr);
+        munmap(shm, sizeof(SharedData));
+        munmap(file_map, static_cast<size_t>(file_size));
+        close(fd);
+        return 1;
+    }
+    if (pthread_mutex_init(&shared->mutex, &mattr) != 0) {
+        std::cerr << "pthread_mutex_init failed" << std::endl;
+        pthread_mutexattr_destroy(&mattr);
+        munmap(shm, sizeof(SharedData));
+        munmap(file_map, static_cast<size_t>(file_size));
+        close(fd);
+        return 1;
+    }
+    pthread_mutexattr_destroy(&mattr);
+
+    if (static_cast<off_t>(num_processes) > file_size) {
+        num_processes = static_cast<int>(file_size);
+        if (num_processes == 0) num_processes = 1;
+    }
+
+    size_t chunk = static_cast<size_t>(file_size) / static_cast<size_t>(num_processes);
+    size_t remainder = static_cast<size_t>(file_size) % static_cast<size_t>(num_processes);
+
+    std::vector<pid_t> children;
+    children.reserve(num_processes);
+
+    unsigned char* data = reinterpret_cast<unsigned char*>(file_map);
+
     for (int i = 0; i < num_processes; ++i) {
-        threads.emplace_back([=]() {
-            size_t start = i * chunk_size;
-            size_t end = (i == num_processes - 1) ? file_content.size() : start + chunk_size;
+        pid_t pid = fork();
+        if (pid < 0) {
+            std::cerr << "fork failed: " << strerror(errno) << std::endl;
+            break;
+        }
+        if (pid == 0) {
+            // proces podrzędny
+            size_t start = static_cast<size_t>(i) * chunk + static_cast<size_t>(std::min(i, static_cast<int>(remainder)));
+            // Rozdziel resztę na pierwsze 'remainder' kawałków
+            if (static_cast<size_t>(i) < remainder) start = static_cast<size_t>(i) * (chunk + 1);
+            size_t end = start + chunk + (static_cast<size_t>(i) < remainder ? 1 : 0);
+            if (end > static_cast<size_t>(file_size)) end = static_cast<size_t>(file_size);
+
+            unsigned int localCount[LETTER_COUNT];
+            memset(localCount, 0, sizeof(localCount));
+            double localSum = 0.0;
+
             for (size_t j = start; j < end; ++j) {
-                char c = file_content[j];
+                unsigned char c = data[j];
+                localSum += sqrt(static_cast<double>(c));
                 if (c >= 'A' && c <= 'Z') {
-                    std::lock_guard<std::mutex> lock(shared_data->mutex);
-                    shared_data->counts[c - 'A']++;
+                    localCount[c - 'A']++;
                 } else if (c >= 'a' && c <= 'z') {
-                    std::lock_guard<std::mutex> lock(shared_data->mutex);
-                    shared_data->counts[c - 'a']++;
+                    localCount[c - 'a']++;
                 }
-                shared_data->sum_sqrt_ascii += sqrt(static_cast<double>(c));
             }
-        });
+
+            // Wyniki lokalne do pamięci współdzielonej pod mutexem
+            if (pthread_mutex_lock(&shared->mutex) != 0) {
+                _exit(2);
+            }
+            for (int k = 0; k < LETTER_COUNT; ++k) shared->counts[k] += localCount[k];
+            shared->sum_sqrt_ascii += localSum;
+            pthread_mutex_unlock(&shared->mutex);
+
+            munmap(file_map, static_cast<size_t>(file_size));
+            munmap(shm, sizeof(SharedData));
+            close(fd);
+            _exit(0);
+        } else {
+            children.push_back(pid);
+        }
     }
 
-    // Czekanie na wątki
-    for (auto &t : threads) {
-        t.join();
+    // Czekanie na zakończenie procesów podrzędnych
+    int status = 0;
+    for (pid_t cpid : children) {
+        waitpid(cpid, &status, 0);
     }
 
-    for (int i = 0; i < 26; ++i) {
-        std::cout << "Count of " << char('A' + i) << ": " << shared_data->counts[i] << std::endl;
+    for (int i = 0; i < LETTER_COUNT; ++i) {
+        std::cout << static_cast<char>('a' + i) << ": " << shared->counts[i] << std::endl;
     }
-    std::cout << "Sum of square roots of ASCII values: " << shared_data->sum_sqrt_ascii << std::endl;
+    std::cout << "Sum sqrt ASCII: " << shared->sum_sqrt_ascii << std::endl;
 
-    delete shared_data;
+    // Czyszczenie zasobów
+    pthread_mutex_destroy(&shared->mutex);
+    munmap(shm, sizeof(SharedData));
+    munmap(file_map, static_cast<size_t>(file_size));
+    close(fd);
+
     return 0;
 }
