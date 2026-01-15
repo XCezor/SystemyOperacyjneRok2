@@ -6,7 +6,6 @@
 #include <mutex>
 #include <cmath>
 
-// Shared memory structure
 struct SharedData {
     unsigned int counts[26];
     double sum_sqrt_ascii;
