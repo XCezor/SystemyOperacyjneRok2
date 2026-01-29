@@ -23,7 +23,7 @@ class Slab:
 
     def alloc(self):
         if self.is_full():
-            return None;
+            return None
         # Pierwsze wolne miejsce
         free_index = self.bitmap.index(False)
         self.bitmap[free_index] = True
